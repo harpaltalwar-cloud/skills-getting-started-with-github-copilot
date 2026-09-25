@@ -12,20 +12,83 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
 
-        const spotsLeft = details.max_participants - details.participants.length;
+        const participants = details.participants || [];
+        const spotsLeft = details.max_participants - participants.length;
+        const participantsMarkup = participants.length
+          ? `<ul class="participants-list">${participants
+              .map(
+                (participant) => `
+                  <li class="participant-item">
+                    <span class="participant-email">${participant}</span>
+                    <button
+                      type="button"
+                      class="participant-remove-btn"
+                      data-activity="${name}"
+                      data-email="${participant}"
+                      aria-label="Remove ${participant} from ${name}"
+                      title="Remove participant"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                `
+              )
+              .join("")}</ul>`
+          : '<p class="participants-empty">No participants yet.</p>';
 
         activityCard.innerHTML = `
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
-          <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <div class="participants-section">
+            <strong>Participants:</strong>
+            ${participantsMarkup}
+          </div>
+          <p class="availability"><strong>Availability:</strong> ${spotsLeft} spots left</p>
         `;
+
+        const removeButtons = activityCard.querySelectorAll(".participant-remove-btn");
+        removeButtons.forEach((button) => {
+          button.addEventListener("click", async () => {
+            const { activity, email } = button.dataset;
+
+            try {
+              const deleteResponse = await fetch(
+                `/activities/${encodeURIComponent(activity)}/signup?email=${encodeURIComponent(email)}`,
+                {
+                  method: "DELETE",
+                }
+              );
+
+              const result = await deleteResponse.json();
+
+              if (!deleteResponse.ok) {
+                throw new Error(result.detail || "Unable to remove participant.");
+              }
+
+              messageDiv.textContent = result.message;
+              messageDiv.className = "success";
+              messageDiv.classList.remove("hidden");
+              setTimeout(() => {
+                messageDiv.classList.add("hidden");
+              }, 5000);
+
+              await fetchActivities();
+            } catch (error) {
+              messageDiv.textContent = error.message || "Failed to remove participant.";
+              messageDiv.className = "error";
+              messageDiv.classList.remove("hidden");
+              console.error("Error removing participant:", error);
+            }
+          });
+        });
 
         activitiesList.appendChild(activityCard);
 
@@ -62,6 +125,7 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        await fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
